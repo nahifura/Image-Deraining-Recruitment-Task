@@ -13,7 +13,7 @@ from models.baseline_net import BaselineNet
 from models.unet import UNet
 from losses.perceptual_loss import PerceptualLoss
 
-
+# 初始化，使用parser.add_argument的方法
 def get_args():
     parser = argparse.ArgumentParser(description="Deraining Model Training")
     parser.add_argument("--data_dir", type=str, required=True, help="Path to the dataset")
@@ -31,7 +31,7 @@ def get_args():
 
     return parser.parse_args()
 
-
+# 训练一个轮次
 def train_one_epoch(loader, model, optimizer, pixel_loss_fn, perceptual_loss_fn, args, device):
     loop = tqdm(loader, leave=True)
     model.train()
@@ -51,7 +51,7 @@ def train_one_epoch(loader, model, optimizer, pixel_loss_fn, perceptual_loss_fn,
         total_loss.backward()
         optimizer.step()
 
-
+# psnr的计算
 def evaluate(loader, model, device, lpips_fn):
     model.eval()
     total_psnr, total_ssim, total_lpips = 0, 0, 0
@@ -73,7 +73,7 @@ def evaluate(loader, model, device, lpips_fn):
     print(f"EVAL => Avg PSNR: {avg_psnr:.4f} | Avg SSIM: {avg_ssim:.4f} | Avg LPIPS: {avg_lpips:.4f}")
     return avg_psnr
 
-
+# 主运行函数
 def main():
     args = get_args()
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -91,19 +91,24 @@ def main():
     perceptual_loss_fn = PerceptualLoss().to(device) if args.use_perceptual_loss else None
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
 
+    # 训练模式
     if args.mode == "train":
+
+        #加载数据集，测试集
         train_dataset = DerainDataset(root_dir=args.data_dir, is_train=True)
         train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=4)
         test_dataset = DerainDataset(root_dir=args.data_dir, is_train=False)
         test_loader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False)
 
         best_psnr = 0.0
+
         for epoch in range(args.epochs):
             print(f"\n--- Epoch {epoch + 1}/{args.epochs} ---")
             train_one_epoch(train_loader, model, optimizer, pixel_loss_fn, perceptual_loss_fn, args, device)
 
             current_psnr = evaluate(test_loader, model, device, lpips_fn)
 
+            # 存储更优秀的模型参数
             if current_psnr > best_psnr:
                 best_psnr = current_psnr
                 checkpoint_data = {"state_dict": model.state_dict(), "optimizer": optimizer.state_dict()}
@@ -111,7 +116,7 @@ def main():
                 save_checkpoint(checkpoint_data, filename=f"best_{model_name}")
 
             save_some_examples(model, test_loader, epoch, folder="evaluation_images", device=device)
-
+    # 测试模式
     elif args.mode == "test":
         if not args.checkpoint: raise ValueError("Must provide a checkpoint for test mode.")
         load_checkpoint(torch.load(args.checkpoint, map_location=device), model, optimizer)
